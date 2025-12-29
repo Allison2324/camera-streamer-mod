@@ -5,6 +5,7 @@
 #include "device/buffer_lock.h"
 #include "util/opts/log.h"
 #include "util/opts/fourcc.h"
+#include "device/overlay.h"
 
 #include <inttypes.h>
 
