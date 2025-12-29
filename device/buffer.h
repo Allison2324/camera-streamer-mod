@@ -35,6 +35,13 @@ typedef struct buffer_s {
   buffer_t *dma_source;
   bool enqueued;
   uint64_t enqueue_time_us, captured_time_us;
+
+  // Frame metadata (must reflect what was actually applied for this frame)
+  bool crop_valid;
+  uint32_t crop_x;
+  uint32_t crop_y;
+  uint32_t crop_width;
+  uint32_t crop_height;
 } buffer_t;
 
 buffer_t *buffer_open(const char *name, buffer_list_t *buf_list, int buffer);

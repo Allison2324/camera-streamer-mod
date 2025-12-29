@@ -16,12 +16,13 @@ int libcamera_buffer_open(buffer_t *buf)
   auto &configuration = configurations->at(buf->buf_list->index);
   auto stream = configuration.stream();
   const std::vector<std::unique_ptr<libcamera::FrameBuffer>> &buffers =
-      buf->buf_list->dev->libcamera->allocator->buffers(stream);
+    buf->buf_list->dev->libcamera->allocator->buffers(stream);
   auto const &buffer = buffers[buf->index];
 
   if (buf->libcamera->request->addBuffer(stream, buffer.get()) < 0) {
     LOG_ERROR(buf, "Can't set buffer for request");
   }
+
   if (buf->start) {
     LOG_ERROR(buf, "Too many streams.");
   }
@@ -35,14 +36,14 @@ int libcamera_buffer_open(buffer_t *buf)
     uint64_t length = 0;
     libcamera::SharedFD dma_fd = buffer->planes()[0].fd;
 
-    // Require that planes are continuous
+    // Require that planes are continous
     for (auto const &plane : buffer->planes()) {
       if (plane.fd != dma_fd) {
         LOG_ERROR(buf, "Plane does not share FD: fd=%d, expected=%d", plane.fd.get(), dma_fd.get());
       }
 
       if (offset + length != plane.offset) {
-        LOG_ERROR(buf, "Plane is not continuous: offset=%u, expected=%" PRIu64, plane.offset, offset + length);
+        LOG_ERROR(buf, "Plane is not continious: offset=%u, expected=%" PRIu64, plane.offset, offset + length);
       }
 
       length += plane.length;
@@ -51,6 +52,7 @@ int libcamera_buffer_open(buffer_t *buf)
     buf->start = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, dma_fd.get(), offset);
     if (!buf->start || buf->start == MAP_FAILED) {
       LOG_ERROR(buf, "Failed to mmap DMA buffer");
+      goto error;
     }
 
     buf->dma_fd = dma_fd.get();
@@ -70,6 +72,7 @@ void libcamera_buffer_close(buffer_t *buf)
 {
   if (buf->libcamera) {
     delete buf->libcamera;
+
     buf->libcamera = NULL;
   }
 }
@@ -146,12 +149,30 @@ int libcamera_buffer_list_dequeue(buffer_list_t *buf_list, buffer_t **bufp)
   std::optional<int64_t> sensor_timestamp((*bufp)->libcamera->request->metadata().
     get<int64_t>(libcamera::controls::SensorTimestamp));
   uint64_t sensor_timestamp_us = sensor_timestamp.value_or(0) / 1000;
-  uint64_t boot_time_us = get_time_us(CLOCK_BOOTTIME, NULL, NULL, 0);
 
+  uint64_t boot_time_us = get_time_us(CLOCK_BOOTTIME, NULL, NULL, 0);
   uint64_t now_us = get_monotonic_time_us(NULL, NULL);
 
   (*bufp)->captured_time_us = now_us - (boot_time_us - sensor_timestamp_us);
   (*bufp)->used = 0;
+
+  // Extract ScalerCrop from metadata for THIS completed frame (100% exact)
+  (*bufp)->crop_valid = false;
+  (*bufp)->crop_x = 0;
+  (*bufp)->crop_y = 0;
+  (*bufp)->crop_width = 0;
+  (*bufp)->crop_height = 0;
+
+  std::optional<libcamera::Rectangle> scaler_crop((*bufp)->libcamera->request->metadata().
+    get<libcamera::Rectangle>(libcamera::controls::ScalerCrop));
+  if (scaler_crop.has_value()) {
+    const libcamera::Rectangle &r = scaler_crop.value();
+    (*bufp)->crop_valid = true;
+    (*bufp)->crop_x = (uint32_t)r.x;
+    (*bufp)->crop_y = (uint32_t)r.y;
+    (*bufp)->crop_width = (uint32_t)r.width;
+    (*bufp)->crop_height = (uint32_t)r.height;
+  }
 
   for (auto &bufferMap : (*bufp)->libcamera->request->buffers()) {
     auto frameBuffer = bufferMap.second;
