@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 static const uint8_t font3x5[][5] = {
   { 0x07, 0x05, 0x05, 0x05, 0x07 }, // 0
@@ -66,6 +67,30 @@ static void draw_comma(uint8_t *base, unsigned width, unsigned height, unsigned 
   }
 }
 
+static unsigned draw_text_line(uint8_t *base, unsigned width, unsigned height, unsigned x, unsigned y, const char *text, unsigned scale, uint8_t y_white)
+{
+  for (size_t i = 0; i < strlen(text); i++) {
+    char c = text[i];
+
+    if (c == ',') {
+      if (x + 2 * scale >= width)
+        break;
+      draw_comma(base, width, height, x, y, scale, y_white);
+      x += 2 * scale;
+      continue;
+    }
+
+    if (c >= '0' && c <= '9') {
+      if (x + 4 * scale >= width)
+        break;
+      draw_char_3x5(base, width, height, x, y, c, scale, y_white);
+      x += 4 * scale;
+      continue;
+    }
+  }
+  return x;
+}
+
 void overlay_draw_crop_yuyv(buffer_t *buf)
 {
   if (!buf || !buf->start || !buf->buf_list)
@@ -78,33 +103,36 @@ void overlay_draw_crop_yuyv(buffer_t *buf)
   unsigned height = buf->buf_list->fmt.height;
   uint8_t *base = (uint8_t *)buf->start;
 
-  char text[128];
+  char crop_text[128];
   if (buf->crop_valid) {
-    snprintf(text, sizeof(text), "%u,%u,%u,%u", buf->crop_x, buf->crop_y, buf->crop_width, buf->crop_height);
+    snprintf(crop_text, sizeof(crop_text), "%u,%u,%u,%u",
+      buf->crop_x, buf->crop_y, buf->crop_width, buf->crop_height);
   } else {
-    snprintf(text, sizeof(text), "0,0,0,0");
+    snprintf(crop_text, sizeof(crop_text), "0,0,0,0");
   }
 
-  unsigned scale = 2;
+  char ts_text[128];
+  snprintf(ts_text, sizeof(ts_text), "%" PRIu64, buf->captured_time_us);
+
   unsigned margin = 8;
-  unsigned x = margin;
-  unsigned y = margin;
+
+  unsigned scale_crop = 2;
+  unsigned scale_ts = 1;
+
+  unsigned line_h_crop = 5 * scale_crop;
+  unsigned line_h_ts = 5 * scale_ts;
+
+  unsigned gap = 4;
+
+  unsigned x0 = margin;
+  unsigned y0 = margin;
 
   uint8_t y_white = 235;
 
-  for (size_t i = 0; i < strlen(text); i++) {
-    char c = text[i];
+  draw_text_line(base, width, height, x0, y0, crop_text, scale_crop, y_white);
 
-    if (c == ',') {
-      draw_comma(base, width, height, x, y, scale, y_white);
-      x += 2 * scale;
-      continue;
-    }
-
-    if (c >= '0' && c <= '9') {
-      draw_char_3x5(base, width, height, x, y, c, scale, y_white);
-      x += 4 * scale;
-      continue;
-    }
+  unsigned y1 = y0 + line_h_crop + gap;
+  if (y1 + line_h_ts < height) {
+    draw_text_line(base, width, height, x0, y1, ts_text, scale_ts, y_white);
   }
 }
