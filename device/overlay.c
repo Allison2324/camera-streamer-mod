@@ -67,6 +67,20 @@ static void draw_dot(uint8_t *base, unsigned width, unsigned height, unsigned x0
   }
 }
 
+static void draw_comma(uint8_t *base, unsigned width, unsigned height, unsigned x0, unsigned y0, unsigned scale, uint8_t yval)
+{
+  unsigned xx = x0 + 1 * scale;
+  unsigned yy = y0 + 5 * scale;
+  for (unsigned sy = 0; sy < scale; sy++) {
+    for (unsigned sx = 0; sx < scale; sx++) {
+      unsigned x = xx + sx;
+      unsigned y = yy + sy;
+      if (x < width && y < height)
+        yuyv_set_y(base, width, x, y, yval);
+    }
+  }
+}
+
 static void draw_dash(uint8_t *base, unsigned width, unsigned height, unsigned x0, unsigned y0, unsigned scale, uint8_t yval)
 {
   unsigned yy = y0 + 2 * scale;
@@ -105,6 +119,14 @@ static unsigned draw_text_line(uint8_t *base, unsigned width, unsigned height, u
     char c = text[i];
 
     if (c == ' ') {
+      x += 2 * scale;
+      continue;
+    }
+
+    if (c == ',') {
+      if (x + 2 * scale >= width)
+        break;
+      draw_comma(base, width, height, x, y, scale, y_white);
       x += 2 * scale;
       continue;
     }
