@@ -1,0 +1,17 @@
+tmp/
+*.o
+*.d
+*.html.c
+*.js.c
+/camera-streamer
+/test_*
+.vscode/
+/Procfile*
+/version.h
+
+/debian/.debhelper
+/debian/debhelper-build-stamp
+/debian/*.substvars
+/debian/files
+/debian/*.log
+/debian/camera-streamer*/

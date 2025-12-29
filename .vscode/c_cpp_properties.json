@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/third_party/libdatachannel/include",
+                "${workspaceFolder}/third_party/libdatachannel/deps/json/include",
+                "/usr/include/libcamera",
+                "/usr/include/liveMedia",
+                "/usr/include/groupsock",
+                "/usr/include/BasicUsageEnvironment",
+                "/usr/include/UsageEnvironment"
+            ],
+            "defines": [
+                "USE_LIBCAMERA=1",
+                "USE_FFMPEG=1",
+                "USE_RTSP=1",
+                "USE_LIBDATACHANNEL=1"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "linux-gcc-arm64"
+        }
+    ],
+    "version": 4
+}
