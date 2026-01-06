@@ -6,6 +6,10 @@
 #include "device/camera/camera.h"
 #include "output/output.h"
 #include "output/rtsp/rtsp.h"
+#include "device/crop_sync.h"
+
+#include <inttypes.h>
+#include <strings.h>
 
 extern unsigned char html_index_html[];
 extern unsigned int html_index_html_len;
@@ -34,6 +38,7 @@ void *camera_http_set_option(http_worker_t *worker, FILE *stream, const char *ke
   }
 
   bool found = false;
+  bool want_cmd_id = (key && (!strcasecmp(key, "ScalerCrop") || !strcasecmp(key, "scalercrop")));
 
   for (int i = 0; i < MAX_DEVICES; i++) {
     device_t *dev = camera->devices[i];
@@ -44,7 +49,16 @@ void *camera_http_set_option(http_worker_t *worker, FILE *stream, const char *ke
     int ret = device_set_option_string(dev, key, value);
     if (ret > 0) {
       http_once(stream, http_200, headersp);
-      fprintf(stream, "%s: The '%s' was set to '%s'.\r\n", dev->name, key, value);
+      if (want_cmd_id) {
+        uint64_t cmd_id = device_crop_sync_take_last_cmd_id(dev);
+        if (cmd_id) {
+          fprintf(stream, "%s: The '%s' was set to '%s'. cmd_id=%" PRIu64 ".\r\n", dev->name, key, value, cmd_id);
+        } else {
+          fprintf(stream, "%s: The '%s' was set to '%s'.\r\n", dev->name, key, value);
+        }
+      } else {
+        fprintf(stream, "%s: The '%s' was set to '%s'.\r\n", dev->name, key, value);
+      }
     } else if (ret < 0) {
       http_once(stream, http_500, headersp);
       fprintf(stream, "%s: Cannot set '%s' to '%s'.\r\n", dev->name, key, value);

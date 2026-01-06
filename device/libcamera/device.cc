@@ -1,5 +1,8 @@
 #ifdef USE_LIBCAMERA
 #include "libcamera.hh"
+extern "C" {
+#include "device/crop_sync.h"
+}
 
 std::string libcamera_device_option_normalize(std::string key)
 {
@@ -91,7 +94,6 @@ int libcamera_device_open(device_t *dev)
   } else {
     dev->libcamera->camera = dev->libcamera->camera_manager->get(dev->path);
 
-    // Do partial match of camera
     if (!dev->libcamera->camera) {
       for (auto& camera : dev->libcamera->camera_manager->cameras()) {
         if (!strstr(camera->id().c_str(), dev->path))
@@ -120,7 +122,7 @@ int libcamera_device_open(device_t *dev)
   dev->libcamera->allocator = std::make_shared<libcamera::FrameBufferAllocator>(
     dev->libcamera->camera);
 
-	LOG_INFO(dev, "Device path=%s opened", dev->libcamera->camera->id().c_str());
+  LOG_INFO(dev, "Device path=%s opened", dev->libcamera->camera->id().c_str());
   return 0;
 
 error:
@@ -129,6 +131,8 @@ error:
 
 void libcamera_device_close(device_t *dev)
 {
+  device_crop_sync_detach(dev);
+
   if (dev->libcamera) {
     if (dev->libcamera->camera) {
       dev->libcamera->camera->release();
@@ -166,6 +170,10 @@ int libcamera_device_set_option(device_t *dev, const char *keyp, const char *val
     if (key != control_key)
       continue;
 
+    bool is_scalercrop = (control_id->id() == libcamera::controls::ScalerCrop.id());
+    libcamera::Rectangle scaler_crop_rect;
+    bool scaler_crop_rect_valid = false;
+
     libcamera::ControlValue control_value;
 
     switch (control_id->type()) {
@@ -201,11 +209,15 @@ int libcamera_device_set_option(device_t *dev, const char *keyp, const char *val
 
       for (int i = 0; RECTANGLE_PATTERNS[i]; i++) {
         libcamera::Rectangle rectangle;
-      
+
         if (4 == sscanf(value, RECTANGLE_PATTERNS[i],
           &rectangle.x, &rectangle.y,
           &rectangle.width, &rectangle.height)) {
           control_value.set(rectangle);
+          if (is_scalercrop) {
+            scaler_crop_rect = rectangle;
+            scaler_crop_rect_valid = true;
+          }
           break;
         }
       }
@@ -227,7 +239,7 @@ int libcamera_device_set_option(device_t *dev, const char *keyp, const char *val
         }
       }
       break;
-  
+
     case libcamera::ControlTypeString:
       break;
     }
@@ -236,10 +248,16 @@ int libcamera_device_set_option(device_t *dev, const char *keyp, const char *val
       LOG_ERROR(dev, "The `%s` type `%d` is not supported.", control_key.c_str(), control_id->type());
     }
 
-    LOG_INFO(dev, "Configuring option %s (%08x, type=%d) = %s", 
+    LOG_INFO(dev, "Configuring option %s (%08x, type=%d) = %s",
       control_key.c_str(), control_id->id(), control_id->type(),
       control_value.toString().c_str());
     dev->libcamera->controls.set(control_id->id(), control_value);
+
+    if (is_scalercrop && scaler_crop_rect_valid) {
+      device_crop_sync_submit(dev, true, scaler_crop_rect.x, scaler_crop_rect.y,
+        (uint32_t)scaler_crop_rect.width, (uint32_t)scaler_crop_rect.height);
+    }
+
     return 1;
   }
 

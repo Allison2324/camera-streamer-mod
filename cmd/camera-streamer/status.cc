@@ -8,6 +8,7 @@ extern "C" {
 #include "output/rtsp/rtsp.h"
 #include "output/webrtc/webrtc.h"
 #include "output/output.h"
+#include "device/crop_sync.h"
 
 extern camera_t *camera;
 extern http_server_options_t http_options;
@@ -53,6 +54,90 @@ static nlohmann::json serialize_buf_lock(buffer_lock_t *buf_lock)
   return output;
 }
 
+static nlohmann::json serialize_crop_rect(const device_crop_rect_t &r)
+{
+  nlohmann::json j;
+  j["valid"] = r.valid;
+  j["x"] = r.x;
+  j["y"] = r.y;
+  j["width"] = r.width;
+  j["height"] = r.height;
+  return j;
+}
+
+static const char *serialize_crop_state(device_crop_cmd_state_t s)
+{
+  switch (s) {
+  case DEVICE_CROP_CMD_PENDING: return "pending";
+  case DEVICE_CROP_CMD_APPLIED: return "applied";
+  case DEVICE_CROP_CMD_SUPERSEDED: return "superseded";
+  }
+  return "unknown";
+}
+
+static nlohmann::json serialize_crop_sync(device_t *device)
+{
+  device_crop_sync_snapshot_t snap;
+  if (device_crop_sync_snapshot(device, &snap) < 0) {
+    return false;
+  }
+
+  nlohmann::json j;
+  j["current_applied"] = serialize_crop_rect(snap.current_applied);
+  j["last_frame_us"] = snap.last_frame_us;
+
+  if (snap.last_event.valid) {
+    nlohmann::json ev;
+    ev["cmd_id"] = snap.last_event.cmd_id;
+    ev["last_before_us"] = snap.last_event.last_before_us;
+    ev["first_after_us"] = snap.last_event.first_after_us;
+    ev["applied"] = serialize_crop_rect(snap.last_event.applied);
+    j["last_apply_event"] = ev;
+  } else {
+    j["last_apply_event"] = false;
+  }
+
+  nlohmann::json hist = nlohmann::json::array();
+  for (int i = 0; i < snap.history_count; i++) {
+    const device_crop_cmd_t &c = snap.history[i];
+    nlohmann::json cj;
+    cj["cmd_id"] = c.cmd_id;
+    cj["state"] = serialize_crop_state(c.state);
+    cj["superseded_by_cmd_id"] = c.superseded_by_cmd_id;
+    cj["submit_time_us"] = c.submit_time_us;
+    cj["desired"] = serialize_crop_rect(c.desired);
+    cj["last_before_us"] = c.last_before_us;
+    cj["first_after_us"] = c.first_after_us;
+    cj["applied"] = serialize_crop_rect(c.applied);
+    hist.push_back(cj);
+  }
+  j["history"] = hist;
+
+  device_crop_cmd_t pending;
+  bool has_pending = false;
+  for (int i = 0; i < snap.history_count; i++) {
+    const device_crop_cmd_t &c = snap.history[i];
+    if (c.state == DEVICE_CROP_CMD_PENDING) {
+      pending = c;
+      has_pending = true;
+      break;
+    }
+  }
+  if (has_pending) {
+    nlohmann::json pj;
+    pj["cmd_id"] = pending.cmd_id;
+    pj["state"] = serialize_crop_state(pending.state);
+    pj["superseded_by_cmd_id"] = pending.superseded_by_cmd_id;
+    pj["submit_time_us"] = pending.submit_time_us;
+    pj["desired"] = serialize_crop_rect(pending.desired);
+    j["pending"] = pj;
+  } else {
+    j["pending"] = false;
+  }
+
+  return j;
+}
+
 static nlohmann::json devices_status_json()
 {
   nlohmann::json devices;
@@ -70,6 +155,7 @@ static nlohmann::json devices_status_json()
     for (int j = 0; j < device->n_capture_list; j++) {
       device_json["captures"][j] = serialize_buf_list(device->capture_lists[j]);
     }
+    device_json["crop_sync"] = serialize_crop_sync(device);
     devices += device_json;
   }
 

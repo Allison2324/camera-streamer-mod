@@ -5,7 +5,6 @@
 #include "device/buffer_lock.h"
 #include "util/opts/log.h"
 #include "util/opts/fourcc.h"
-#include "device/overlay.h"
 
 #include <inttypes.h>
 
@@ -262,8 +261,6 @@ static int links_enqueue_from_capture_list(buffer_list_t *capture_list, link_t *
   bool dropped = false;
 
   int max_bufs_queued = buf->flags.is_keyed ? MAX_QUEUED_ON_KEYED : MAX_QUEUED_ON_NON_KEYED;
-
-  overlay_draw_crop_yuyv(buf);
 
   for (int j = 0; j < link->n_output_lists; j++) {
     if (link->output_lists[j]->dev->paused) {

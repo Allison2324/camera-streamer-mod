@@ -1,6 +1,10 @@
 #ifdef USE_LIBCAMERA
 #include "libcamera.hh"
 
+extern "C" {
+#include "device/crop_sync.h"
+}
+
 #include <inttypes.h>
 
 int libcamera_buffer_open(buffer_t *buf)
@@ -36,7 +40,6 @@ int libcamera_buffer_open(buffer_t *buf)
     uint64_t length = 0;
     libcamera::SharedFD dma_fd = buffer->planes()[0].fd;
 
-    // Require that planes are continous
     for (auto const &plane : buffer->planes()) {
       if (plane.fd != dma_fd) {
         LOG_ERROR(buf, "Plane does not share FD: fd=%d, expected=%d", plane.fd.get(), dma_fd.get());
@@ -126,7 +129,6 @@ void buffer_list_libcamera_t::libcamera_buffer_list_dequeued(libcamera::Request 
     }
   }
 
-  // put back into queue, as it failed
   buf_list->dev->libcamera->camera->queueRequest(request);
 }
 
@@ -156,7 +158,6 @@ int libcamera_buffer_list_dequeue(buffer_list_t *buf_list, buffer_t **bufp)
   (*bufp)->captured_time_us = now_us - (boot_time_us - sensor_timestamp_us);
   (*bufp)->used = 0;
 
-  // Extract ScalerCrop from metadata for THIS completed frame (100% exact)
   (*bufp)->crop_valid = false;
   (*bufp)->crop_x = 0;
   (*bufp)->crop_y = 0;
@@ -173,6 +174,9 @@ int libcamera_buffer_list_dequeue(buffer_list_t *buf_list, buffer_t **bufp)
     (*bufp)->crop_width = (uint32_t)r.width;
     (*bufp)->crop_height = (uint32_t)r.height;
   }
+
+  device_crop_sync_on_frame(buf_list->dev, (*bufp)->captured_time_us, (*bufp)->crop_valid,
+    (*bufp)->crop_x, (*bufp)->crop_y, (*bufp)->crop_width, (*bufp)->crop_height);
 
   for (auto &bufferMap : (*bufp)->libcamera->request->buffers()) {
     auto frameBuffer = bufferMap.second;
@@ -191,7 +195,7 @@ int libcamera_buffer_list_dequeue(buffer_list_t *buf_list, buffer_t **bufp)
 int libcamera_buffer_list_pollfd(buffer_list_t *buf_list, struct pollfd *pollfd, bool can_dequeue)
 {
   int count_enqueued = buffer_list_count_enqueued(buf_list);
-  pollfd->fd = buf_list->libcamera->fds[0]; // write end
+  pollfd->fd = buf_list->libcamera->fds[0];
   pollfd->events = POLLHUP;
   if (can_dequeue && count_enqueued > 0) {
     pollfd->events |= POLLIN;
