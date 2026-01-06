@@ -123,6 +123,7 @@ static nlohmann::json serialize_crop_sync(device_t *device)
       break;
     }
   }
+
   if (has_pending) {
     nlohmann::json pj;
     pj["cmd_id"] = pending.cmd_id;
